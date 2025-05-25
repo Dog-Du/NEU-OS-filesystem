@@ -2,14 +2,16 @@
 #define __HEAD__
 #include <semaphore.h>
 #include <stdbool.h>
+#include <atomic>
 #include <set>
+
 
 constexpr int MAX_NAME_LENGTH = 32;
 constexpr int MAX_PASSWD_LENGTH = 32;
 constexpr int INODE_SIZE = 128;
 constexpr int SUPER_BLOCK_INDEX = 0;
 constexpr int BLOCK_SIZE = 512;                           // 数据块内容大小
-constexpr int DISK_SIZE = 50 * 1024 * 1024 + BLOCK_SIZE;  // 100MB 磁盘
+constexpr int DISK_SIZE = 50 * 1024 * 1024 + BLOCK_SIZE;  // 50MB 磁盘
 constexpr int MEM_SIZE = DISK_SIZE;                       // 暂时内存 == 磁盘大小。
 
 constexpr int INODE_OFFSET = BLOCK_SIZE;
@@ -94,6 +96,7 @@ typedef struct userEntry {
 } userEntry;
 
 typedef struct context {
+  std::atomic<bool> flag;
   sem_t mutex;
 } context;
 
@@ -102,7 +105,7 @@ extern int current_dir_index;
 extern std::set<int> open_file;
 extern userEntry user_info;
 extern int fd;
-extern char memory[DISK_SIZE];
+extern char *memory;
 /* -------------------全局变量--------------------- */
 
 /* -------------------磁盘操作--------------------- */
@@ -115,6 +118,7 @@ extern dataBlock *GetBlock(int index);
 extern indexBlock *GetIndexBlock(int index);
 extern void PutBlock(int index, bool write);
 extern void PutInode(int index, bool write);
+extern void PutSuperBlock(bool write);
 extern int AllocDataBlock();
 extern void ReleaseDataBlock(int index);
 /* -------------------磁盘操作--------------------- */

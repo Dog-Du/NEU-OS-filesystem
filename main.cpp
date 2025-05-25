@@ -1,3 +1,7 @@
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <iostream>
 #include "head.h"
 #include "print.h"
@@ -51,10 +55,26 @@ void CurrentDirector()  // 显示当前目录
 }
 
 int main() {
+  int fd = open("./process_shared", O_RDWR | O_CREAT | O_TRUNC, 0b111111111);
+  ftruncate(fd, sizeof(context));
+
+  context *mutex =
+      (context *)mmap(NULL, sizeof(context), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (mutex == MAP_FAILED) {
+    fprintf(stderr, "系统初始化失败.\n");
+    return 0;
+  }
+
+  if (mutex->flag == false) {
+    mutex->flag = true;
+    sem_init(&mutex->mutex, 1, 1);
+  }
+
   string command;
 
   char ch;
 
+  sem_wait(&mutex->mutex);
   while (1) {
     cout << "是否初始化文件系统，若初始化，则之前的信息将消失!  Y/N" << endl;
     cin >> ch;
@@ -71,6 +91,7 @@ int main() {
     }
     print();
   }
+  sem_post(&mutex->mutex);
 
   while (LogIn() == false) {
     ;
@@ -86,6 +107,7 @@ int main() {
     cin >> command;
     string param;
 
+    sem_wait(&mutex->mutex);
     if (command == "help") {
       MainPage();
     } else if (command == "link") {
@@ -131,6 +153,7 @@ int main() {
       cin >> param;
       CloseFile(param.c_str());
     } else if (command == "logout") {
+       sem_post(&mutex->mutex);
       break;
     } else if (command == "rename") {
       cin >> param;
@@ -174,9 +197,12 @@ int main() {
         }
       }
     }
+    sem_post(&mutex->mutex);
   }
 
+  sem_wait(&mutex->mutex);
   CloseFileSystem();
+  sem_post(&mutex->mutex);
   getchar();
   return 0;
 }

@@ -77,6 +77,11 @@ bool CreateFile(const char *file_name) {
     return false;
   }
 
+  if (strcmp(file_name, ".") == 0 || strcmp(file_name, "..") == 0) {
+    fprintf(stderr, "被占用的目录名\n");
+    return false;
+  }
+
   int index = NewFile(FILE_TYPE, file_name, GetCurrentUser()->user_name);
   if (index <= 0) {
     return false;
@@ -91,6 +96,14 @@ bool CreateFile(const char *file_name) {
 
 int Open(const char *file_name, int *pos) {
   int fd = has_file(current_dir_index, file_name, pos);
+
+  if(strcmp(file_name,".") == 0) {
+    return current_dir_index;
+  }
+
+  if (strcmp(file_name,"..") == 0) {
+    return GetInode(current_dir_index)->last_dir;
+  }
 
   if (fd < 0) {
     fprintf(stderr, "当前目录没有此文件\n");
@@ -142,6 +155,11 @@ bool DeleteFile(const char *file_name) {
     return false;
   }
 
+  if (strcmp(file_name, ".") == 0 || strcmp(file_name, "..") == 0) {
+    fprintf(stderr, "被占用的目录名\n");
+    return false;
+  }
+
   inode *n = GetInode(fd);
   inode *nn = nullptr;
   bool need_del = false;
@@ -181,6 +199,11 @@ bool DeleteDir(const char *dir_name) {
     return false;
   }
 
+  if (strcmp(dir_name, ".") == 0 || strcmp(dir_name, "..") == 0) {
+    fprintf(stderr, "被占用的目录名\n");
+    return false;
+  }
+
   inode *d = GetInode(fd);
   if (d->type != DIR_TYPE) {
     fprintf(stderr, "该文件不是目录");
@@ -208,12 +231,18 @@ bool DeleteDir(const char *dir_name) {
   dirEntry entry;
   entry.file_id = -1;
   WriteEntry(current_dir_index, pos, sizeof(dirEntry), (const char *)&entry);
+  PutInode(d->id, true);
   return RemoveFile(fd);
 }
 
 bool CreateDir(const char *dir_name) {
   if (has_file(current_dir_index, dir_name) >= 0) {
     fprintf(stderr, "目录下已存在相同名字\n");
+    return false;
+  }
+
+  if (strcmp(dir_name, ".") == 0 || strcmp(dir_name, "..") == 0) {
+    fprintf(stderr, "被占用的目录名\n");
     return false;
   }
 
@@ -224,6 +253,7 @@ bool CreateDir(const char *dir_name) {
   dirEntry entry;
   entry.file_id = fd;
   Append(current_dir_index, sizeof(dirEntry), (const char *)&entry);
+  PutInode(n->id, true);
   return true;
 }
 
@@ -324,6 +354,8 @@ bool Link(const char *src, const char *dst) {
   entry.file_id = index;
 
   Append(current_dir_index, sizeof(dirEntry), (const char *)&entry);
+  PutInode(n->id, true);
+  PutInode(old->id, true);
   return true;
 }
 
@@ -343,6 +375,7 @@ bool Rename(const char *old_name, const char *new_name) {
   inode *n = GetInode(i);
   memset(n->file_name, 0, MAX_NAME_LENGTH);
   memcpy(n->file_name, new_name, strlen(new_name));
+  PutInode(n->id, true);
   return true;
 }
 
@@ -394,6 +427,9 @@ bool Copy(const char *file, const char *dir) {
     inode *nn = GetInode(n->link_inode);
     nn->link_cnt += 1;
     n->link_cnt = nn->link_cnt;
+    PutInode(n->id, true);
+    PutInode(nn->id, true);
+    PutInode(f->id, true);
     return true;
   }
 
@@ -404,6 +440,8 @@ bool Copy(const char *file, const char *dir) {
   dirEntry entry;
   entry.file_id = index;
   Append(j, sizeof(entry), (const char *)&entry);
+  PutInode(n->id, true);
+  PutInode(f->id, true);
   return true;
 }
 

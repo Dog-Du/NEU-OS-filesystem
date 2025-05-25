@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <string>
+#include <cassert>
 #include "head.h"
 
 char buf[MAX_FILE_SIZE];
@@ -10,7 +11,7 @@ char buf[MAX_FILE_SIZE];
 void create_maxfile(const char *file) {
   CreateFile(file);
 
-  Append(Open(file), MAX_FILE_SIZE, buf);
+  assert(Append(Open(file), MAX_FILE_SIZE, buf) == MAX_FILE_SIZE);
 
   ReadFile(file);
 }

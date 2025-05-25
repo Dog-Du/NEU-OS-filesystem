@@ -9,7 +9,7 @@
 #include "head.h"
 
 int fd = -1;
-char memory[DISK_SIZE];
+char *memory = nullptr;
 
 bool CloseFileSystem() {
   assert(pwrite(fd, memory, DISK_SIZE, 0) == DISK_SIZE);
@@ -18,7 +18,6 @@ bool CloseFileSystem() {
 }
 
 bool FormatFileSystem(const char *file_name) {
-  struct stat s;
   fd = open(file_name, O_CREAT | O_RDWR | O_TRUNC, 0b111111111);
 
   if (fd < 0) {
@@ -27,6 +26,7 @@ bool FormatFileSystem(const char *file_name) {
   }
 
   ftruncate(fd, DISK_SIZE);
+  memory = (char *)mmap(NULL, DISK_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
   if (memory == MAP_FAILED) {
     fprintf(stderr, "格式化文件系统失败。");
     return false;
@@ -37,7 +37,7 @@ bool FormatFileSystem(const char *file_name) {
   super->stack_num = 1;
   super->stack[0] = 0;
 
-  for (int i = 0; i < MAX_BLOCK_NUMBER; ++i) {
+  for (int i = MAX_BLOCK_NUMBER - 1; i >= 1; --i) {
     ReleaseDataBlock(i);
   }
 
@@ -85,6 +85,13 @@ bool OpenFileSystem(const char *file_name) {
     return FormatFileSystem(file_name);
   }
 
+  memory = (char *)mmap(NULL, s.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+  if (memory == MAP_FAILED) {
+    fprintf(stderr, "文件系统打开失败。");
+    return false;
+  }
+
   assert(pread(fd, memory, DISK_SIZE, 0) == DISK_SIZE);
   return true;
 }
@@ -113,9 +120,15 @@ void PutInode(int index, bool write) {
   }
 }
 
+void PutSuperBlock(bool write) {
+  if (write) {
+    assert(pwrite(fd, GetSuperBlock(), BLOCK_SIZE, 0) == BLOCK_SIZE);
+  }
+}
+
 int AllocDataBlock() {
   superBlock *super = GetSuperBlock();
-  int ret;
+  int ret = 0;
   constexpr int max_length = (sizeof(super->stack) / sizeof(int)) - 1;
 
   while (super->stack_num <= 1 && super->stack[0] != 0) {
@@ -140,14 +153,14 @@ int AllocDataBlock() {
 
   if (super->stack_num > 1 || (super->stack[0] > 0 && super->stack[0] < MAX_BLOCK_NUMBER)) {
     ret = super->stack[--super->stack_num];
-    PutBlock(0, true);
+    PutSuperBlock(true);
     fprintf(stderr, "分配块%d\n", ret);
   } else {
     ret = 0;
     fprintf(stderr, "块不足\n");
   }
 
-  return ret >= MAX_BLOCK_NUMBER ? 0 : ret;
+  return ret >= MAX_BLOCK_NUMBER || ret <= 0 ? 0 : ret;
 }
 
 void ReleaseDataBlock(int index) {
@@ -162,6 +175,6 @@ void ReleaseDataBlock(int index) {
     PutInode(index, true);
   }
 
-  PutBlock(0, true);
+  PutSuperBlock(true);
   fprintf(stderr, "释放块%d\n", index);
 }
