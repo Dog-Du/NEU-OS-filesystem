@@ -18,15 +18,12 @@ void MainPage()  // 主页信息
   PRINT_FONT_YEL;
   cout << "--------------------------command list-----------------------------\n";
   cout << "---close file_name----------------关闭文件\n";
-  cout << "---copy name des_director_name----复制文件到目录\n";
   cout << "---create file_name---------------建立文件\n";
   cout << "---deldir director_name-----------删除文件夹\n";
   cout << "---delfile file_name--------------删除文件\n";
   cout << "---dir----------------------------显示当前目录中的目录和文件\n";
-  cout << "---logout-------------------------保存结果并退出系统\n";
-  cout << "---ltdir -------------------------返回上一级目录\n";
+  cout << "---cd dir_name -------------------改变当前目录\n";
   cout << "---mkdir director_name------------建立目录\n";
-  cout << "---ntdir director_name------------进入下一级目录\n";
   cout << "---open file_name-----------------打开文件\n";
   cout << "---read file_name-----------------读文件\n";
   cout << "---rename old_name new_name-------重命名\n";
@@ -34,10 +31,13 @@ void MainPage()  // 主页信息
   cout << "---write file_name pos content----写文件\n";
   cout << "---link src_file dst_file---------链接文件\n";
   cout << "---move src_file dst_dir----------移动文件\n";
+  cout << "---copy name des_director_name----复制文件到目录\n";
   cout << "---useradd user_name passwd-------新增用户\n";
   cout << "---userdel user_name--------------删除用户\n";
   cout << "---login user_name----------------登录其他用户\n";
+  cout << "---logout-------------------------退出系统\n";
   cout << "---users--------------------------显示所有用户\n";
+  cout << "---clear--------------------------清空屏幕\n";
   cout << "---load src_file dst_file---------从本地文件系统导入文件\n";
   PRINT_FONT_BLA;
 }
@@ -49,7 +49,7 @@ void CurrentDirector()  // 显示当前目录
   PRINT_FONT_YEL;
   printf(":");
   PRINT_FONT_GRE;
-  printf("%s", NowDir());
+  printf("%s", GetPath().c_str());
   PRINT_FONT_BLA;
   printf(">");
 }
@@ -119,11 +119,15 @@ int main() {
       CreateDir(param.c_str());
     } else if (command == "dir") {
       ShowDir();
-    } else if (command == "ntdir") {
+    } else if (command == "cd") {
       cin >> param;
-      NextDir(param.c_str());
-    } else if (command == "ltdir") {
-      LastDir();
+      if (param == ".") {
+        ;  // do nothing.
+      } else if (param == "..") {
+        LastDir();
+      } else {
+        NextDir(param.c_str());
+      }
     } else if (command == "create") {
       cin >> param;
       CreateFile(param.c_str());
@@ -153,7 +157,7 @@ int main() {
       cin >> param;
       CloseFile(param.c_str());
     } else if (command == "logout") {
-       sem_post(&mutex->mutex);
+      sem_post(&mutex->mutex);
       break;
     } else if (command == "rename") {
       cin >> param;
@@ -187,16 +191,20 @@ int main() {
       string src, dst;
       cin >> src >> dst;
       Load(src.c_str(), dst.c_str());
+    } else if (command == "clear") {
+      system("clear");
     } else {
       cout << "错误指令，请重新输入" << endl;
-      while (1) {
-        char ch;
-        ch = getchar();
-        if (ch == '\n') {
-          break;
-        }
+    }
+
+    while (1) {
+      char ch;
+      ch = getchar();
+      if (ch == '\n') {
+        break;
       }
     }
+
     sem_post(&mutex->mutex);
   }
 

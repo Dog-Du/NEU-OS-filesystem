@@ -91,7 +91,7 @@ bool LogIn(const char *name, const char *passwd) {
 const userEntry *GetCurrentUser() { return &user_info; }
 
 bool Validate(const char *owner, const char *worker) {
-  if (strlen(worker) == 0) {
+  if (strlen(worker) == 0 || strlen(owner) == 0) {
     return true;
   }
 
@@ -117,8 +117,7 @@ bool UserAdd(const char *name, const char *passwd, const char *parent) {
   memcpy(&entry.user_name, name, strlen(name));
   memcpy(&entry.user_passwd, passwd, strlen(passwd));
   memcpy(&entry.parent, parent, strlen(parent));
-  superBlock *super = GetSuperBlock();
-  Append(super->user_info_id, sizeof(entry), (const char *)&entry);
+  Append(GetSuperBlock()->user_info_id, sizeof(entry), (const char *)&entry);
   return true;
 }
 
@@ -128,6 +127,11 @@ bool UserDel(const char *name) {
   if (index < 0) {
     fprintf(stderr, "该用户不存在\n");
     return true;
+  }
+
+  if (strcmp(name, user_info.user_name) == 0) {
+    fprintf(stderr, "不可以删除当前用户\n");
+    return false;
   }
 
   if (Validate(name, GetCurrentUser()->user_name) == false) {

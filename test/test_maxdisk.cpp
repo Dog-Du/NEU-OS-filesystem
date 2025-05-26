@@ -24,7 +24,7 @@ int main() {
   FormatFileSystem(root_path);
   LogIn("root", "root");
 
-  for (int i = 0; i <= 1000; ++i) {
+  for (int i = 0; i <= 10; ++i) {
     std::string s = std::to_string(i);
     create_maxfile(s.c_str());
     printf("文件%d完成\n", i);

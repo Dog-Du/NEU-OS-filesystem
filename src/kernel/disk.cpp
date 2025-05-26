@@ -41,28 +41,17 @@ bool FormatFileSystem(const char *file_name) {
     ReleaseDataBlock(i);
   }
 
-  super->root_dir_id = AllocDataBlock();
-  super->user_info_id = AllocDataBlock();
+  // 根目录设置为空，谁都可以进行创建和删除文件。
+  super->root_dir_id = NewFile(DIR_TYPE, "/", "");
+  super->user_info_id = NewFile(USER_TYPE, "user_info", "root");
 
   inode *root_dir = GetInode(super->root_dir_id);
-  root_dir->type = DIR_TYPE;
   root_dir->last_dir = -1;
   root_dir->link_cnt = -1;
-  root_dir->length = 0;
-
-  root_dir->id = super->root_dir_id;
-  memcpy(root_dir->file_name, "/", sizeof("/"));
-  memcpy(root_dir->owner_name, "root", sizeof("root"));
 
   inode *user_info = GetInode(super->user_info_id);
-  user_info->type = USER_TYPE;
-  user_info->id = super->user_info_id;
-  user_info->link_cnt = 0;
-  user_info->length = 0;
-  user_info->last_dir = 0;
-
-  memcpy(user_info->owner_name, "root", sizeof("root"));
-  memcpy(user_info->file_name, "user_info", sizeof("user_info"));
+  user_info->link_cnt = -1;
+  user_info->last_dir = -1;
 
   open_file.insert(super->user_info_id);
   UserAdd("root", "root", "root");
@@ -108,6 +97,7 @@ indexBlock *GetIndexBlock(int index) { return (indexBlock *)GetBlock(index); }
 
 void PutBlock(int index, bool write) {
   if (write) {
+    fprintf(stderr, "刷新块[%d]\n", index);
     dataBlock *block = GetBlock(index);
     assert(pwrite(fd, block, BLOCK_SIZE, DATA_BLOCK_OFFSET + BLOCK_SIZE * index) == BLOCK_SIZE);
   }
@@ -115,6 +105,7 @@ void PutBlock(int index, bool write) {
 
 void PutInode(int index, bool write) {
   if (write) {
+    fprintf(stderr, "刷新inode[%d]\n", index);
     inode *n = GetInode(index);
     assert(pwrite(fd, n, INODE_SIZE, INODE_OFFSET + INODE_SIZE * index) == INODE_SIZE);
   }
@@ -153,13 +144,21 @@ int AllocDataBlock() {
 
   if (super->stack_num > 1 || (super->stack[0] > 0 && super->stack[0] < MAX_BLOCK_NUMBER)) {
     ret = super->stack[--super->stack_num];
-    PutSuperBlock(true);
     fprintf(stderr, "分配块%d\n", ret);
   } else {
     ret = 0;
     fprintf(stderr, "块不足\n");
   }
 
+  PutSuperBlock(true);
+
+  // 清空）。
+  if (ret > 0) {
+    memset(GetInode(ret), 0, INODE_SIZE);
+    memset(GetBlock(ret), 0, BLOCK_SIZE);
+    PutInode(ret, true);
+    PutBlock(ret, true);
+  }
   return ret >= MAX_BLOCK_NUMBER || ret <= 0 ? 0 : ret;
 }
 
@@ -172,9 +171,11 @@ void ReleaseDataBlock(int index) {
     memcpy(GetBlock(index), super, BLOCK_SIZE);
     super->stack[0] = index;
     super->stack_num = 1;
-    PutInode(index, true);
+    PutBlock(index, true);
   }
 
   PutSuperBlock(true);
   fprintf(stderr, "释放块%d\n", index);
 }
+
+// void FlushDisk() { assert(pwrite(fd, memory, DISK_SIZE, 0) == DISK_SIZE); }

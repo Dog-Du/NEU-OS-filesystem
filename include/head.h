@@ -4,24 +4,25 @@
 #include <stdbool.h>
 #include <atomic>
 #include <set>
-
+#include <string>
 
 constexpr int MAX_NAME_LENGTH = 32;
 constexpr int MAX_PASSWD_LENGTH = 32;
 constexpr int INODE_SIZE = 128;
-constexpr int SUPER_BLOCK_INDEX = 0;
-constexpr int BLOCK_SIZE = 512;                           // 数据块内容大小
+constexpr int BLOCK_SIZE = 4096;                          // 数据块内容大小
 constexpr int DISK_SIZE = 50 * 1024 * 1024 + BLOCK_SIZE;  // 50MB 磁盘
-constexpr int MEM_SIZE = DISK_SIZE;                       // 暂时内存 == 磁盘大小。
+constexpr int MEM_SIZE = DISK_SIZE;  // 因为没有缓冲池，为了方便暂时内存 == 磁盘大小。
 
-constexpr int INODE_OFFSET = BLOCK_SIZE;
-constexpr int MAX_BLOCK_NUMBER = (DISK_SIZE - BLOCK_SIZE) / (INODE_SIZE + BLOCK_SIZE);
+constexpr int MAX_BLOCK_NUMBER = DISK_SIZE / (INODE_SIZE + BLOCK_SIZE);
 constexpr int MAX_INODE_NUMBER = MAX_BLOCK_NUMBER;
+constexpr int INODE_OFFSET = BLOCK_SIZE;
 constexpr int DATA_BLOCK_OFFSET = MAX_BLOCK_NUMBER * INODE_SIZE + INODE_OFFSET;
-constexpr int MAX_FILE_SIZE = 71168;
 constexpr int MAX_FIRST_INDEX = 11;
-
-const char root_path[] = "./MyFileSystem";
+constexpr int MAX_SECOND_INDEX = BLOCK_SIZE / sizeof(int);
+constexpr int MAX_FILE_SIZE =
+    (MAX_FIRST_INDEX + MAX_SECOND_INDEX) * BLOCK_SIZE;  // 4239360 bytes == 4.04296875 MB
+constexpr int DIR_ENTRY_NUMBER = MAX_FIRST_INDEX * BLOCK_SIZE / sizeof(int);
+constexpr char root_path[] = "./MyFileSystem";
 
 enum file_type : int {
   FILE_TYPE = 0,
@@ -34,22 +35,21 @@ typedef struct inode {
   file_type type;  // 文件类型
   int id;          // inode 的id。
   int length;      // 文件所占字节数
-  int link_cnt;    // link_cnt
+  int link_cnt;    // link_cnt，可拓展为目录也可链接。
 
   union {
     int second_index;  // 二级索引数据块
     int last_dir;      // 如果 inode 为文件夹，则不使用 second_index。
-    int link_inode;    // 　如果 inode 为链接文件，则指向原本文件。
+    int link_inode;    // 如果 inode 为链接文件，则指向原本文件。
   };
 
   char file_name[MAX_NAME_LENGTH];   // 文件名字
   char owner_name[MAX_NAME_LENGTH];  // 主人名字.
-  int first_index[];                 // 数据域。
-  // 一个文件最大为：(11 + 512 / 4) * 512 == 71168 字节。
+  int first_index[MAX_FIRST_INDEX];  // 数据域。
 } inode;
 
-static_assert((INODE_SIZE - sizeof(inode)) / sizeof(int) > 0, "sizeof(inode) should <= 128 - 4");
 static_assert(BLOCK_SIZE % INODE_SIZE == 0);
+static_assert(sizeof(inode) == 128);
 
 typedef struct dataBlock  // 数据块
 {
@@ -57,7 +57,7 @@ typedef struct dataBlock  // 数据块
 } dataBlock;
 
 typedef struct indexBlock {
-  int data_block[BLOCK_SIZE / sizeof(int)];
+  int data_block[(BLOCK_SIZE) / sizeof(int)];
 } indexBlock;
 
 typedef struct superBlock {
@@ -75,15 +75,6 @@ typedef struct freeBlock {
   int stack[(BLOCK_SIZE - sizeof(_) - sizeof(__) - sizeof(stack_num)) / sizeof(int)];
   ;  // stack[0] 是成组链接的下一组。 stack[1] 指向本身。
 } freeBlock;
-
-typedef struct inodeStat {
-  file_type type;                    // 文件类型
-  int id;                            // inode 的id。
-  int length;                        // 文件所占字节数
-  int link_cnt;                      // link_cnt
-  char file_name[MAX_NAME_LENGTH];   // 文件名字
-  char owner_name[MAX_NAME_LENGTH];  // 主人名字.
-} inodeStat;
 
 typedef struct dirEntry {
   int file_id;
@@ -105,7 +96,7 @@ extern int current_dir_index;
 extern std::set<int> open_file;
 extern userEntry user_info;
 extern int fd;
-extern char *memory;
+extern char *memory;  // shared_memory
 /* -------------------全局变量--------------------- */
 
 /* -------------------磁盘操作--------------------- */
@@ -121,6 +112,7 @@ extern void PutInode(int index, bool write);
 extern void PutSuperBlock(bool write);
 extern int AllocDataBlock();
 extern void ReleaseDataBlock(int index);
+// extern void FlushDisk();
 /* -------------------磁盘操作--------------------- */
 
 /* -------------------文件操作--------------------- */
@@ -129,7 +121,6 @@ extern int Append(int index, int len, const char *buf);
 extern int Read(int index, int pos, int len, char *buf);
 extern int ReadEntry(int index, int pos, int size, char *buf);
 extern int WriteEntry(int index, int pos, int size, const char *buf);
-extern inodeStat InodeStat(int index);
 extern int NewFile(file_type type, const char *file_name, const char *owner_name);
 extern bool RemoveFile(int index);
 /* -------------------文件操作--------------------- */
@@ -143,10 +134,11 @@ extern bool DeleteFile(const char *file_name);
 extern bool DeleteDir(const char *dir_name);
 extern bool CreateDir(const char *dir_name);
 extern bool NextDir(const char *dir_name);
-extern bool ReadDir(int index, int *len, int **files);
+extern bool ReadDir(int index, int *len, int *files);
 extern void ShowDir();
 extern bool LastDir();
 extern const char *NowDir();
+extern std::string GetPath();
 extern bool Rename(const char *old_name, const char *new_name);
 extern bool Move(const char *file, const char *dir);
 extern bool Copy(const char *file, const char *dir);

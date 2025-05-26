@@ -3,6 +3,9 @@
 #include <string.h>
 #include <list>
 #include <set>
+#include <streambuf>
+#include <string>
+#include <vector>
 #include "head.h"
 #include "print.h"
 
@@ -24,9 +27,9 @@ static bool check(int index = current_dir_index) {
 
 static int has_file(int index, const char *file, int *pos = nullptr) {
   int len = 0;
-  int *files = nullptr;
+  int *files = (int *)alloca(GetInode(index)->length);
   int ret = -1;
-  ReadDir(current_dir_index, &len, &files);
+  ReadDir(index, &len, files);
 
   for (int i = 0; i < len; ++i) {
     inode *n = GetInode(files[i]);
@@ -40,9 +43,6 @@ static int has_file(int index, const char *file, int *pos = nullptr) {
     }
   }
 
-  if (files != nullptr) {
-    free(files);
-  }
   return ret;
 }
 
@@ -52,16 +52,15 @@ bool ValidateCurrent(int index) {
   return Validate(GetInode(index)->owner_name, GetCurrentUser()->user_name);
 }
 
-bool ReadDir(int index, int *len, int **files) {
+bool ReadDir(int index, int *len, int *files) {
   inode *n = GetInode(index);
   constexpr int entry_size = sizeof(dirEntry);
   *len = n->length / entry_size;
-  *files = (int *)malloc(n->length);
 
   for (int i = 0; i < *len; ++i) {
     dirEntry entry;
     ReadEntry(index, i, entry_size, (char *)&entry);
-    (*files)[i] = entry.file_id;
+    files[i] = entry.file_id;
   }
 
   return true;
@@ -69,6 +68,7 @@ bool ReadDir(int index, int *len, int **files) {
 
 bool CreateFile(const char *file_name) {
   if (check() == false) {
+    fprintf(stderr, "无权限\n");
     return false;
   }
 
@@ -97,11 +97,11 @@ bool CreateFile(const char *file_name) {
 int Open(const char *file_name, int *pos) {
   int fd = has_file(current_dir_index, file_name, pos);
 
-  if(strcmp(file_name,".") == 0) {
+  if (strcmp(file_name, ".") == 0) {
     return current_dir_index;
   }
 
-  if (strcmp(file_name,"..") == 0) {
+  if (strcmp(file_name, "..") == 0) {
     return GetInode(current_dir_index)->last_dir;
   }
 
@@ -176,11 +176,15 @@ bool DeleteFile(const char *file_name) {
 
   if (need_del) {
     RemoveFile(nn != nullptr ? nn->id : n->id);
+    fprintf(stdout, "删除文件%s\n", file_name);
+  } else {
+    fprintf(stdout, "删除链接%s\n", file_name);
   }
 
   if (nn != nullptr) {
     PutInode(nn->id, true);
   }
+
   PutInode(n->id, true);
   open_file.erase(nn != nullptr ? nn->id : n->id);
   return true;
@@ -236,6 +240,11 @@ bool DeleteDir(const char *dir_name) {
 }
 
 bool CreateDir(const char *dir_name) {
+  if (check() == false) {
+    fprintf(stderr, "无权限\n");
+    return false;
+  }
+
   if (has_file(current_dir_index, dir_name) >= 0) {
     fprintf(stderr, "目录下已存在相同名字\n");
     return false;
@@ -285,8 +294,8 @@ bool LastDir() {
 
 void ShowDir() {
   int len = 0;
-  int *files = nullptr;
-  ReadDir(current_dir_index, &len, &files);
+  int *files = (int *)alloca(GetInode(current_dir_index)->length);
+  ReadDir(current_dir_index, &len, files);
 
   for (int i = 0; i < len; ++i) {
     dirEntry entry;
@@ -313,13 +322,31 @@ void ShowDir() {
   }
 
   fprintf(stdout, "\n");
-  free(files);
 }
 
 const char *NowDir() {
   init();
   inode *n = GetInode(current_dir_index);
   return GetInode(current_dir_index)->file_name;
+}
+
+std::string GetPath() {
+  init();
+  int cur = current_dir_index;
+  std::list<std::string> li;
+  while (cur != GetSuperBlock()->root_dir_id) {
+    inode *n = GetInode(cur);
+    std::string s = n->file_name;
+    li.push_front(s);
+    cur = n->last_dir;
+  }
+
+  std::string s = (li.empty() ? "/" : "");
+  for (auto &str : li) {
+    s += "/" + str;
+  }
+
+  return s;
 }
 
 bool Link(const char *src, const char *dst) {
@@ -427,15 +454,12 @@ bool Copy(const char *file, const char *dir) {
     inode *nn = GetInode(n->link_inode);
     nn->link_cnt += 1;
     n->link_cnt = nn->link_cnt;
-    PutInode(n->id, true);
     PutInode(nn->id, true);
-    PutInode(f->id, true);
-    return true;
+  } else {
+    char *buf = (char *)alloca(f->length);
+    Read(f->id, 0, f->length, buf);
+    Write(n->id, 0, f->length, buf);
   }
-
-  char *buf = (char *)alloca(f->length);
-  Read(f->id, 0, f->length, buf);
-  Write(n->id, 0, f->length, buf);
 
   dirEntry entry;
   entry.file_id = index;

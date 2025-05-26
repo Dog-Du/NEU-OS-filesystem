@@ -1,18 +1,18 @@
-#include "head.h"
 #include <stdio.h>
+#include "head.h"
 
 int main() {
   FormatFileSystem(root_path);
   LogIn("root", "root");
   CreateFile("a");
-
+  constexpr char buf[] = "abcdefghijklmnopqrstuvwxyz";
   int len = 0;
   while (1) {
-    Append(Open("a"), 1, "a");
-    ++len;
+    len += Append(Open("a"), sizeof(buf), buf);
+
     printf("%d\n", len);
 
-    if (len > MAX_FILE_SIZE + 10) {
+    if (len >= MAX_FILE_SIZE) {
       break;
     }
   }
