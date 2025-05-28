@@ -12,7 +12,18 @@ void print() {
   cout << "--------------------------------------------------------------------" << endl;
 }
 
-// 新增功能：load、拷贝、链接、重命名、移动、多进程访问、树状用户管理、随写随刷保证一致性。
+/*
+支持功能：
+1. `Load` 导入本地文件
+2. 硬链接
+3. 拷贝
+4. 重命名
+5. 移动
+6. 树状用户管理
+7. 随写随刷保证一致性
+8. 共享内存实现多进程共享
+9. 用信号量上超大粒度锁避免竞争
+*/
 void MainPage()  // 主页信息
 {
   PRINT_FONT_YEL;
@@ -39,6 +50,8 @@ void MainPage()  // 主页信息
   cout << "---users--------------------------显示所有用户\n";
   cout << "---clear--------------------------清空屏幕\n";
   cout << "---load src_file dst_file---------从本地文件系统导入文件\n";
+  cout << "---log----------------------------开关日志\n";
+  cout << "---help---------------------------显示当前页面\n";
   PRINT_FONT_BLA;
 }
 
@@ -105,6 +118,16 @@ int main() {
     print();
     CurrentDirector();  // 显示当前目录
     cin >> command;
+
+    if (Exist(GetCurrentUser()->user_name) == false) {
+      fprintf(stderr, "当前用户不存在，请重新登录。\n");
+      break;
+    }
+
+    if (GetPath().empty()) {
+      fprintf(stderr, "当前路径不存在，请重新登录。\n");
+      break;
+    }
     string param;
 
     sem_wait(&mutex->mutex);
@@ -144,9 +167,28 @@ int main() {
       Append(Open(param.c_str()), temp.size(), temp.c_str());
     } else if (command == "write") {
       int x;
-      string temp;
-      cin >> param >> x >> temp;
-      Write(Open(param.c_str()), x, temp.size(), temp.c_str());
+      string temp, num;
+      cin >> param >> num >> temp;
+
+      try {
+        x = atoi(num.c_str());
+
+        if (x < 0 || num.empty() || !isdigit(num.front())) {
+          throw invalid_argument("Position must be non-negative.");
+        }
+
+        int fd = Open(param.c_str());
+
+        if (fd <= 0 || GetInode(fd)->type != FILE_TYPE) {
+          fprintf(stderr, "文件未打开或不是文件类型。\n");
+          throw invalid_argument("Invalid file type.");
+        }
+        Write(Open(param.c_str()), x, temp.size(), temp.c_str());
+      } catch (const invalid_argument &e) {
+        fprintf(stderr, "错误：%s\n", e.what());
+      } catch (...) {
+        fprintf(stderr, "错误：位置必须为非负整数。\n");
+      }
     } else if (command == "open") {
       cin >> param;
       OpenFile(param.c_str());
@@ -193,6 +235,13 @@ int main() {
       Load(src.c_str(), dst.c_str());
     } else if (command == "clear") {
       system("clear");
+    } else if (command == "log") {
+      need_log = !need_log;
+      if (need_log) {
+        cout << "日志已开启" << endl;
+      } else {
+        cout << "日志已关闭" << endl;
+      }
     } else {
       cout << "错误指令，请重新输入" << endl;
     }

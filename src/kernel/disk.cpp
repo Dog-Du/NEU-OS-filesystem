@@ -10,6 +10,7 @@
 
 int fd = -1;
 char *memory = nullptr;
+bool need_log = true;
 
 bool CloseFileSystem() {
   assert(pwrite(fd, memory, DISK_SIZE, 0) == DISK_SIZE);
@@ -97,7 +98,7 @@ indexBlock *GetIndexBlock(int index) { return (indexBlock *)GetBlock(index); }
 
 void PutBlock(int index, bool write) {
   if (write) {
-    fprintf(stderr, "刷新块[%d]\n", index);
+    LOG("刷新块[%d]\n", index);
     dataBlock *block = GetBlock(index);
     assert(pwrite(fd, block, BLOCK_SIZE, DATA_BLOCK_OFFSET + BLOCK_SIZE * index) == BLOCK_SIZE);
   }
@@ -105,7 +106,7 @@ void PutBlock(int index, bool write) {
 
 void PutInode(int index, bool write) {
   if (write) {
-    fprintf(stderr, "刷新inode[%d]\n", index);
+    LOG("刷新inode[%d]\n", index);
     inode *n = GetInode(index);
     assert(pwrite(fd, n, INODE_SIZE, INODE_OFFSET + INODE_SIZE * index) == INODE_SIZE);
   }
@@ -144,10 +145,10 @@ int AllocDataBlock() {
 
   if (super->stack_num > 1 || (super->stack[0] > 0 && super->stack[0] < MAX_BLOCK_NUMBER)) {
     ret = super->stack[--super->stack_num];
-    fprintf(stderr, "分配块%d\n", ret);
+    LOG("分配块%d\n", ret);
   } else {
     ret = 0;
-    fprintf(stderr, "块不足\n");
+    LOG("块不足\n");
   }
 
   PutSuperBlock(true);
@@ -175,7 +176,7 @@ void ReleaseDataBlock(int index) {
   }
 
   PutSuperBlock(true);
-  fprintf(stderr, "释放块%d\n", index);
+  LOG("释放块%d\n", index);
 }
 
 // void FlushDisk() { assert(pwrite(fd, memory, DISK_SIZE, 0) == DISK_SIZE); }

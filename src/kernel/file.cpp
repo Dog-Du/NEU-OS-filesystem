@@ -1,5 +1,4 @@
 #include <string.h>
-#include <iostream>
 #include "head.h"
 
 // 我觉得这个函数写的挺好，屏蔽了文件的多级索引，直接抽象成了一个块数组，通过下标来访问对应块
@@ -34,7 +33,7 @@ static dataBlock *getBlock(inode *n, int i, int *index) {
       PutBlock(n->second_index, true);
     }
 
-    fprintf(stdout, "访问二级索引块%d\n", n->second_index);
+    LOG( "访问二级索引块%d\n", n->second_index);
     indexBlock *block = GetIndexBlock(n->second_index);
     i -= MAX_FIRST_INDEX;
     block->data_block[i] = (block->data_block[i] <= 0 ? AllocDataBlock() : block->data_block[i]);
@@ -61,8 +60,17 @@ int NewFile(file_type type, const char *file_name, const char *owner_name) {
   // 因为inode节点和block节点共用编号，所以这个编号分配给inode之后，会让其对应的block节点浪费，为了减少浪费，把它分配给第一块
   // 不过对于链接来说，没啥用。
 
-  memcpy(n->file_name, file_name, strlen(file_name));
-  memcpy(n->owner_name, owner_name, strlen(owner_name));
+  int file_name_len = strlen(file_name);
+  int owner_name_len = strlen(owner_name);
+
+  if (file_name_len >= MAX_NAME_LENGTH || owner_name_len >= MAX_NAME_LENGTH) {
+    fprintf(stderr, "文件名或所有者名过长\n");
+    file_name_len = std::min(file_name_len, MAX_NAME_LENGTH - 1);
+    owner_name_len = std::min(owner_name_len, MAX_NAME_LENGTH - 1);
+  }
+
+  memcpy(n->file_name, file_name, file_name_len);
+  memcpy(n->owner_name, owner_name, owner_name_len);
 
   PutInode(index, true);
   return index;
@@ -76,7 +84,7 @@ int Write(int index, int pos, int len, const char *buf) {
   }
   inode *n = GetInode(index);
 
-  if (n->type == FILE_TYPE && IsOpen(index) == 0) {
+  if (IsOpen(index) == 0 && n->type == FILE_TYPE) {
     fprintf(stderr, "未打开文件\n");
     return 0;
   }
@@ -117,7 +125,7 @@ int Write(int index, int pos, int len, const char *buf) {
     start_pos += s;
     start_pos %= BLOCK_SIZE;
 
-    fprintf(stdout, "写入块%d\n", b);
+    LOG("写入块%d\n", b);
     PutBlock(b, true);
     len -= s;
     w_size += s;
@@ -130,7 +138,7 @@ int Write(int index, int pos, int len, const char *buf) {
     PutBlock(n->second_index, true);
   }
 
-  fprintf(stdout, "共写入%d字节\n", w_size);
+  LOG("共写入%d字节\n", w_size);
   return w_size;
 }
 
@@ -184,14 +192,19 @@ int Read(int index, int pos, int len, char *buf) {
     int s = std::min(BLOCK_SIZE, len);
     memcpy(buf + r_size, block->content + start_pos, s);
 
-    fprintf(stdout, "读取块%d\n", b);
+    LOG( "读取块%d\n", b);
+    PutBlock(b, true);
     start_pos += s;
     start_pos %= BLOCK_SIZE;
     len -= s;
     r_size += s;
   }
 
-  fprintf(stdout, "共读取%d字节\n", r_size);
+  if (n->second_index > 0) {
+    PutBlock(n->second_index, true);
+  }
+
+  LOG("共读取%d字节\n", r_size);
   return r_size;
 }
 
@@ -234,6 +247,6 @@ bool RemoveFile(int index) {
 
   memset(n, 0, INODE_SIZE);
   PutInode(index, true);
-  ReleaseDataBlock(index);
+  // ReleaseDataBlock(index); // 修改之后，first_index[0]指向的块是inode节点，所以不要重复释放
   return true;
 }

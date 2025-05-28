@@ -1,7 +1,7 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
-#include <string>
 #include "head.h"
 #include "print.h"
 
@@ -16,7 +16,7 @@ static bool get_parent(const char *worker, char *buf) {
     ReadEntry(n->id, i, sizeof(userEntry), (char *)&entry);
 
     if (strcmp(entry.user_name, worker) == 0) {
-      memcpy(buf, entry.user_name, strlen(entry.user_name));
+      memcpy(buf, entry.parent, sizeof(entry.parent));
       return true;
     }
   }
@@ -63,6 +63,23 @@ static int exist(const char *name) {
   return -1;
 }
 
+static void change_parent(const char *name, const char *parent) {
+  inode *n = GetInode(GetSuperBlock()->user_info_id);
+  int len = n->length / sizeof(userEntry);
+
+  for (int i = 0; i < len; ++i) {
+    userEntry entry;
+    ReadEntry(n->id, i, sizeof(userEntry), (char *)&entry);
+
+    if (strcmp(entry.parent, name) == 0) {
+      memcpy(entry.parent, parent, sizeof(entry.parent));
+      WriteEntry(n->id, i, sizeof(userEntry), (const char *)&entry);
+    }
+  }
+}
+
+bool Exist(const char *name) { return exist(name) >= 0; }
+
 bool LogIn(const char *name, const char *passwd) {
   std::string n, p;
 
@@ -95,12 +112,14 @@ bool Validate(const char *owner, const char *worker) {
     return true;
   }
 
-  char buf[MAX_NAME_LENGTH];
+  char owner_buf[MAX_NAME_LENGTH];
 
   while (strcmp(owner, worker) != 0 && strcmp(owner, "root") != 0) {
+    char buf[MAX_NAME_LENGTH];
     memset(buf, 0, MAX_NAME_LENGTH);
     get_parent(owner, buf);
-    owner = buf;
+    memcpy(owner_buf, buf, MAX_NAME_LENGTH);
+    owner = owner_buf;
   }
 
   return strcmp(owner, worker) == 0;
@@ -112,11 +131,23 @@ bool UserAdd(const char *name, const char *passwd, const char *parent) {
     return false;
   }
 
+  int name_len = strlen(name);
+  int passwd_len = strlen(passwd);
+  int parent_len = strlen(parent);
+
+  if (name_len >= MAX_NAME_LENGTH || passwd_len >= MAX_NAME_LENGTH ||
+      parent_len >= MAX_NAME_LENGTH) {
+    fprintf(stderr, "用户名、密码或父用户名称过长，将被截断\n");
+    name_len = std::min(name_len, MAX_NAME_LENGTH - 1);
+    passwd_len = std::min(passwd_len, MAX_NAME_LENGTH - 1);
+    parent_len = std::min(parent_len, MAX_NAME_LENGTH - 1);
+  }
+
   userEntry entry;
   memset(&entry, 0, sizeof(userEntry));
-  memcpy(&entry.user_name, name, strlen(name));
-  memcpy(&entry.user_passwd, passwd, strlen(passwd));
-  memcpy(&entry.parent, parent, strlen(parent));
+  memcpy(entry.user_name, name, name_len);
+  memcpy(entry.user_passwd, passwd, passwd_len);
+  memcpy(entry.parent, parent, parent_len);
   Append(GetSuperBlock()->user_info_id, sizeof(entry), (const char *)&entry);
   return true;
 }
@@ -139,6 +170,11 @@ bool UserDel(const char *name) {
     return false;
   }
 
+  userEntry del_user;
+  ReadEntry(GetSuperBlock()->user_info_id, index, sizeof(userEntry), (char *)&del_user);
+
+  // root -> b -> a -> c -> d
+  change_parent(name, del_user.parent);
   userEntry entry;
   memset(&entry, 0, sizeof(entry));
   WriteEntry(GetSuperBlock()->user_info_id, index, sizeof(entry), (const char *)&entry);

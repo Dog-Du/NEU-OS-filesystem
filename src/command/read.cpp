@@ -26,7 +26,10 @@ void ReadFile(const char *file) {
 
   int len = Read(fd, 0, n->length, s);
   PRINT_FONT_GRE
-  fprintf(stdout, "%s\n", s);
+  for (int i = 0; i < len; ++i) {
+    putc(s[i], stdout);
+  }
   PRINT_FONT_RED
-  fprintf(stdout, "共读取%d字节\n", len);
+  fprintf(stdout, "\n共读取%d字节\n", len);
+  PRINT_FONT_BLA;
 }

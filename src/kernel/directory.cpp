@@ -3,14 +3,13 @@
 #include <string.h>
 #include <list>
 #include <set>
-#include <streambuf>
 #include <string>
-#include <vector>
 #include "head.h"
 #include "print.h"
 
 int current_dir_index = -1;
 std::set<int> open_file;
+const char *TYPE2NAME[] = {"FILE", "DIRE", "LINK", "USER"};
 
 static void init() {
   static bool is_init = false;
@@ -215,8 +214,9 @@ bool DeleteDir(const char *dir_name) {
   }
 
   NextDir(d->file_name);
+  const int num = d->length / sizeof(dirEntry);
 
-  for (int i = 0; i < d->length / sizeof(int); ++i) {
+  for (int i = 0; i < num; ++i) {
     dirEntry entry;
     ReadEntry(fd, i, sizeof(dirEntry), (char *)&entry);
 
@@ -278,10 +278,6 @@ bool NextDir(const char *dir_name) {
 }
 
 bool LastDir() {
-  if (check() == false) {
-    return false;
-  }
-
   inode *n = GetInode(current_dir_index);
 
   if (n->last_dir <= 0) {
@@ -310,7 +306,7 @@ void ShowDir() {
       }
 
       PRINT_FONT_YEL;
-      fprintf(stdout, "[type]%s ", (n->type == DIR_TYPE ? "d" : "f"));
+      fprintf(stdout, "[type]%s ", TYPE2NAME[n->type]);
       PRINT_FONT_GRE;
       fprintf(stdout, "[name]%s ", n->file_name);
       PRINT_FONT_RED;
@@ -332,7 +328,13 @@ const char *NowDir() {
 
 std::string GetPath() {
   init();
+
   int cur = current_dir_index;
+
+  if (GetInode(cur)->last_dir <= 0 && cur != GetSuperBlock()->root_dir_id) {
+    return "";
+  }
+
   std::list<std::string> li;
   while (cur != GetSuperBlock()->root_dir_id) {
     inode *n = GetInode(cur);
@@ -363,6 +365,11 @@ bool Link(const char *src, const char *dst) {
   }
   inode *old = GetInode(i);
 
+  while (old->type == LINK_TYPE) {
+    i = old->link_inode;
+    old = GetInode(i);
+  }
+
   if (old->type != FILE_TYPE) {
     fprintf(stderr, "暂不支持该类型链接\n");
     return false;
@@ -373,6 +380,7 @@ bool Link(const char *src, const char *dst) {
     return false;
   }
 
+  open_file.insert(index);
   inode *n = GetInode(index);
   old->link_cnt += 1;
   n->link_inode = i;
@@ -401,7 +409,14 @@ bool Rename(const char *old_name, const char *new_name) {
 
   inode *n = GetInode(i);
   memset(n->file_name, 0, MAX_NAME_LENGTH);
-  memcpy(n->file_name, new_name, strlen(new_name));
+  int len = strlen(new_name);
+
+  if (len >= MAX_NAME_LENGTH) {
+    fprintf(stderr, "文件名过长，将被截断\n");
+    return false;
+  }
+
+  memcpy(n->file_name, new_name, len);
   PutInode(n->id, true);
   return true;
 }
@@ -409,7 +424,7 @@ bool Rename(const char *old_name, const char *new_name) {
 bool Copy(const char *file, const char *dir) {
   int pos = -1;
   int i = has_file(current_dir_index, file, &pos);
-  if (i < 0) {
+  if (i < 0 || GetInode(i)->type != FILE_TYPE) {
     fprintf(stderr, "不存在该文件\n");
     return false;
   }
@@ -420,12 +435,8 @@ bool Copy(const char *file, const char *dir) {
       fprintf(stderr, "不存在目录\n");
       return false;
     }
-    inode *n = GetInode(j);
 
-    if (n->type != DIR_TYPE) {
-      fprintf(stderr, "不是目录\n");
-      return false;
-    }
+    inode *n = GetInode(current_dir_index);
 
     if (n->last_dir < 0) {
       fprintf(stderr, "已在根目录\n");
@@ -472,7 +483,7 @@ bool Copy(const char *file, const char *dir) {
 bool Move(const char *file, const char *dir) {
   int pos = -1;
   int i = has_file(current_dir_index, file, &pos);
-  if (i < 0) {
+  if (i < 0 || GetInode(i)->type != FILE_TYPE) {
     fprintf(stderr, "不存在该文件\n");
     return false;
   }

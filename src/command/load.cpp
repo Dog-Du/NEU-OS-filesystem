@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cassert>
@@ -17,7 +16,7 @@ bool Load(const char *src, const char *file) {
   }
 
   int index = Open(file);
-  if (index < 0) {
+  if (index < 0 || GetInode(index)->type != FILE_TYPE) {
     fprintf(stderr, "不存在文件%s\n", file);
     close(fd);
     return false;
