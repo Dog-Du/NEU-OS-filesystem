@@ -21,10 +21,15 @@ void ReadFile(const char *file) {
     n = GetInode(n->link_inode);
   }
 
-  char *s = (char *)alloca(n->length + 10);
-  memset(s, 0, n->length + 10);
 
+  char *s = (char *)alloca(n->length + 1);
+  memset(s, 0, n->length + 1);
+
+  // 读取
   int len = Read(fd, 0, n->length, s);
+  s[len] = '\0';
+
+  // 按字节打印，避免因为'\0'出现问题。
   PRINT_FONT_GRE
   for (int i = 0; i < len; ++i) {
     putc(s[i], stdout);

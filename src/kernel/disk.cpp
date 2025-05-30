@@ -18,6 +18,7 @@ bool CloseFileSystem() {
   return true;
 }
 
+// 格式化
 bool FormatFileSystem(const char *file_name) {
   fd = open(file_name, O_CREAT | O_RDWR | O_TRUNC, 0b111111111);
 
@@ -28,6 +29,7 @@ bool FormatFileSystem(const char *file_name) {
 
   ftruncate(fd, DISK_SIZE);
   memory = (char *)mmap(NULL, DISK_SIZE, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+  // 共享内存。
   if (memory == MAP_FAILED) {
     fprintf(stderr, "格式化文件系统失败。");
     return false;
@@ -38,6 +40,7 @@ bool FormatFileSystem(const char *file_name) {
   super->stack_num = 1;
   super->stack[0] = 0;
 
+  // 把所有块进行初始化
   for (int i = MAX_BLOCK_NUMBER - 1; i >= 1; --i) {
     ReleaseDataBlock(i);
   }
@@ -54,6 +57,7 @@ bool FormatFileSystem(const char *file_name) {
   user_info->link_cnt = -1;
   user_info->last_dir = -1;
 
+  // user_info_id应该永远都在open_file中
   open_file.insert(super->user_info_id);
   UserAdd("root", "root", "root");
   assert(pwrite(fd, memory, DISK_SIZE, 0) == DISK_SIZE);
@@ -75,6 +79,7 @@ bool OpenFileSystem(const char *file_name) {
     return FormatFileSystem(file_name);
   }
 
+  // 共享内存
   memory = (char *)mmap(NULL, s.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
   if (memory == MAP_FAILED) {
@@ -82,10 +87,12 @@ bool OpenFileSystem(const char *file_name) {
     return false;
   }
 
+  // 读取
   assert(pread(fd, memory, DISK_SIZE, 0) == DISK_SIZE);
   return true;
 }
 
+/*----------------------几个指针强转型实现--------------------------------------------------*/
 superBlock *GetSuperBlock() { return (superBlock *)memory; }
 
 inode *GetInode(int index) { return (inode *)(memory + INODE_OFFSET + INODE_SIZE * index); }
@@ -117,12 +124,15 @@ void PutSuperBlock(bool write) {
     assert(pwrite(fd, GetSuperBlock(), BLOCK_SIZE, 0) == BLOCK_SIZE);
   }
 }
+/*----------------------几个指针强转型实现--------------------------------------------------*/
 
+/*----------------------对超级块进行操作实现分配释放-----------------------------------------*/
 int AllocDataBlock() {
   superBlock *super = GetSuperBlock();
   int ret = 0;
   constexpr int max_length = (sizeof(super->stack) / sizeof(int)) - 1;
 
+  // 超级栈不足
   while (super->stack_num <= 1 && super->stack[0] != 0) {
     int block = super->stack[0];
 
@@ -138,11 +148,13 @@ int AllocDataBlock() {
     super->root_dir_id = root;
     super->user_info_id = user;
 
+    // 把信息拷贝到超级栈中。
     if (super->stack[0] >= MAX_BLOCK_NUMBER) {
       super->stack_num = 0;
     }
   }
 
+  // 超级栈充足时，从超级栈中分配
   if (super->stack_num > 1 || (super->stack[0] > 0 && super->stack[0] < MAX_BLOCK_NUMBER)) {
     ret = super->stack[--super->stack_num];
     LOG("分配块%d\n", ret);
@@ -153,7 +165,7 @@ int AllocDataBlock() {
 
   PutSuperBlock(true);
 
-  // 清空）。
+  // 清空
   if (ret > 0) {
     memset(GetInode(ret), 0, INODE_SIZE);
     memset(GetBlock(ret), 0, BLOCK_SIZE);
@@ -166,11 +178,13 @@ int AllocDataBlock() {
 void ReleaseDataBlock(int index) {
   superBlock *super = GetSuperBlock();
   constexpr int max_length = (sizeof(super->stack) / sizeof(int)) - 1;
-  super->stack[super->stack_num++] = index;
+  super->stack[super->stack_num++] = index;  // 追加到尾部
 
+  // 如果太大, 分组分块, 注意到, 分配之后的块的组长块就是最后释放的块.
+  // 所以，如果超级栈如果不足，需要拉取组长的块的时候，第一个被分配的就是组长块
   while (super->stack_num >= max_length) {
-    memcpy(GetBlock(index), super, BLOCK_SIZE);
-    super->stack[0] = index;
+    memcpy(GetBlock(index), super, BLOCK_SIZE);  // 既是组长块也是空闲块。
+    super->stack[0] = index;                     // 指向下一个组长块
     super->stack_num = 1;
     PutBlock(index, true);
   }
@@ -178,5 +192,6 @@ void ReleaseDataBlock(int index) {
   PutSuperBlock(true);
   LOG("释放块%d\n", index);
 }
+/*----------------------对超级块进行操作实现分配释放-----------------------------------------*/
 
 // void FlushDisk() { assert(pwrite(fd, memory, DISK_SIZE, 0) == DISK_SIZE); }

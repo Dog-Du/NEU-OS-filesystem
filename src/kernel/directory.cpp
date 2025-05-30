@@ -19,11 +19,13 @@ static void init() {
   }
 }
 
+// 检查权限
 static bool check(int index = current_dir_index) {
   init();
   return ValidateCurrent(current_dir_index);
 }
 
+// 检查当前目录下是否有指定文件
 static int has_file(int index, const char *file, int *pos = nullptr) {
   int len = 0;
   int *files = (int *)alloca(GetInode(index)->length);
@@ -47,10 +49,12 @@ static int has_file(int index, const char *file, int *pos = nullptr) {
 
 bool IsOpen(int fd) { return open_file.count(fd) > 0; }
 
+// 当前用户是否有权限访问指定 inode
 bool ValidateCurrent(int index) {
   return Validate(GetInode(index)->owner_name, GetCurrentUser()->user_name);
 }
 
+// 读取目录，写入files和len中
 bool ReadDir(int index, int *len, int *files) {
   inode *n = GetInode(index);
   constexpr int entry_size = sizeof(dirEntry);
@@ -65,6 +69,7 @@ bool ReadDir(int index, int *len, int *files) {
   return true;
 }
 
+// 创建一个新文件
 bool CreateFile(const char *file_name) {
   if (check() == false) {
     fprintf(stderr, "无权限\n");
@@ -88,11 +93,13 @@ bool CreateFile(const char *file_name) {
   dirEntry entry;
   entry.file_id = index;
 
+  // 把新文件添加到当前目录
   Append(current_dir_index, sizeof(dirEntry), (const char *)&entry);
   open_file.insert(index);
   return true;
 }
 
+// 获取当前目录下的指定文件的index，pos表示目录中的位置
 int Open(const char *file_name, int *pos) {
   int fd = has_file(current_dir_index, file_name, pos);
 
@@ -141,14 +148,16 @@ bool CloseFile(const char *file_name) {
   return true;
 }
 
+// 删除一个文件。
 bool DeleteFile(const char *file_name) {
   int pos = -1;
   int fd = Open(file_name, &pos);
-  if (fd < 0 || pos < 0) {
+  if (fd < 0 || pos < 0 || GetInode(fd)->type == DIR_TYPE) {
     fprintf(stderr, "不存在的文件。\n");
     return true;
   }
 
+  // 不需要检查目录是否有权限，因为不可能在一个没有权限的目录下创建一个有权限的文件。
   if (ValidateCurrent(fd) == false) {
     fprintf(stderr, "无权限\n");
     return false;
@@ -160,7 +169,7 @@ bool DeleteFile(const char *file_name) {
   }
 
   inode *n = GetInode(fd);
-  inode *nn = nullptr;
+  inode *nn = nullptr;  // 如果文件为链接位置，则nn指向源文件。
   bool need_del = false;
   if (n->type == LINK_TYPE) {
     nn = GetInode(n->link_inode);
@@ -173,6 +182,7 @@ bool DeleteFile(const char *file_name) {
   entry.file_id = -1;
   WriteEntry(current_dir_index, pos, sizeof(dirEntry), (const char *)&entry);
 
+  // 如果链接为0，则删除源文件。
   if (need_del) {
     RemoveFile(nn != nullptr ? nn->id : n->id);
     fprintf(stdout, "删除文件%s\n", file_name);
@@ -189,7 +199,56 @@ bool DeleteFile(const char *file_name) {
   return true;
 }
 
+// 递归检查文件夹是否有权限，如果文件夹下任意一个文件没有权限，则无法删除这个文件夹。
+static bool validate_dir(const char *dir_name) {
+  int pos = -1;
+  int fd = Open(dir_name, &pos);
+  if (fd < 0 || pos < 0) {
+    fprintf(stderr, "目录不存在\n");
+    return true;
+  }
+
+  if (ValidateCurrent(fd) == false) {
+    fprintf(stderr, "无权限\n");
+    return false;
+  }
+
+  inode *d = GetInode(fd);
+  if (d->type != DIR_TYPE) {
+    fprintf(stderr, "该文件不是目录");
+    return true;
+  }
+
+  // 进入目录
+  NextDir(d->file_name);
+  const int num = d->length / sizeof(dirEntry);
+
+  int i;
+  for (i = 0; i < num; ++i) {
+    dirEntry entry;
+    ReadEntry(fd, i, sizeof(dirEntry), (char *)&entry);
+
+    if (entry.file_id > 0) {
+      inode *n = GetInode(entry.file_id);
+      if (ValidateCurrent(n->id) == false) {
+        break;
+      } else if (n->type == DIR_TYPE && validate_dir(n->file_name) == false) {
+        break;
+      }
+    }
+  }
+
+  LastDir();        // 退出目录
+  return i == num;  // 所有文件都通过验证
+}
+
 bool DeleteDir(const char *dir_name) {
+  // 递归检查所有目录下所有文件。
+  if (validate_dir(dir_name) == false) {
+    fprintf(stderr, "无权限\n");
+    return false;
+  }
+
   int pos = -1;
   int fd = Open(dir_name, &pos);
   if (fd < 0 || pos < 0) {
@@ -213,6 +272,7 @@ bool DeleteDir(const char *dir_name) {
     return true;
   }
 
+  // 进入目录
   NextDir(d->file_name);
   const int num = d->length / sizeof(dirEntry);
 
@@ -220,23 +280,24 @@ bool DeleteDir(const char *dir_name) {
     dirEntry entry;
     ReadEntry(fd, i, sizeof(dirEntry), (char *)&entry);
 
+    // 递归删除
     if (entry.file_id > 0) {
       inode *n = GetInode(entry.file_id);
       if (n->type == DIR_TYPE) {
-        DeleteDir(n->file_name);
+        DeleteDir(n->file_name);  // 递归。
       } else {
-        DeleteFile(n->file_name);
+        DeleteFile(n->file_name);  // 删除文件。
       }
     }
   }
 
-  LastDir();
+  LastDir();  // 退出目录。
 
   dirEntry entry;
   entry.file_id = -1;
   WriteEntry(current_dir_index, pos, sizeof(dirEntry), (const char *)&entry);
   PutInode(d->id, true);
-  return RemoveFile(fd);
+  return RemoveFile(fd);  // 删除这个目录
 }
 
 bool CreateDir(const char *dir_name) {
@@ -256,6 +317,11 @@ bool CreateDir(const char *dir_name) {
   }
 
   int fd = NewFile(DIR_TYPE, dir_name, GetCurrentUser()->user_name);
+  if (fd < 0) {
+    return false;
+  }
+
+  // 创建文件夹。
   inode *n = GetInode(fd);
   n->last_dir = current_dir_index;
 
@@ -288,6 +354,7 @@ bool LastDir() {
   return true;
 }
 
+// 打印出来目录下所有项。
 void ShowDir() {
   int len = 0;
   int *files = (int *)alloca(GetInode(current_dir_index)->length);
@@ -326,6 +393,7 @@ const char *NowDir() {
   return GetInode(current_dir_index)->file_name;
 }
 
+// 获取当前路径
 std::string GetPath() {
   init();
 
@@ -351,6 +419,7 @@ std::string GetPath() {
   return s;
 }
 
+// 链接
 bool Link(const char *src, const char *dst) {
   int i = has_file(current_dir_index, src);
   if (i < 0) {
@@ -364,7 +433,7 @@ bool Link(const char *src, const char *dst) {
     return false;
   }
   inode *old = GetInode(i);
-
+  // 链接的链接，只应该链接到源文件。
   while (old->type == LINK_TYPE) {
     i = old->link_inode;
     old = GetInode(i);
@@ -394,10 +463,16 @@ bool Link(const char *src, const char *dst) {
   return true;
 }
 
+// 重命名
 bool Rename(const char *old_name, const char *new_name) {
   int i = has_file(current_dir_index, old_name);
   if (i < 0) {
     fprintf(stderr, "不存在该文件\n");
+    return false;
+  }
+
+  if (ValidateCurrent(i) == false) {
+    fprintf(stderr, "无权限\n");
     return false;
   }
 
@@ -407,20 +482,22 @@ bool Rename(const char *old_name, const char *new_name) {
     return false;
   }
 
-  inode *n = GetInode(i);
-  memset(n->file_name, 0, MAX_NAME_LENGTH);
   int len = strlen(new_name);
 
   if (len >= MAX_NAME_LENGTH) {
-    fprintf(stderr, "文件名过长，将被截断\n");
+    fprintf(stderr, "文件名过长\n");
     return false;
   }
+  inode *n = GetInode(i);
+  memset(n->file_name, 0, MAX_NAME_LENGTH);
 
+  // 修改文件名。
   memcpy(n->file_name, new_name, len);
   PutInode(n->id, true);
   return true;
 }
 
+// 拷贝
 bool Copy(const char *file, const char *dir) {
   int pos = -1;
   int i = has_file(current_dir_index, file, &pos);
@@ -430,7 +507,9 @@ bool Copy(const char *file, const char *dir) {
   }
 
   int j = has_file(current_dir_index, dir);
+  // j < 0 说明不在复制的文件夹不在当前目录下
   if (j < 0) {
+    // 如果还不是 .. 则不存在
     if (strcmp(dir, "..") != 0) {
       fprintf(stderr, "不存在目录\n");
       return false;
@@ -443,15 +522,16 @@ bool Copy(const char *file, const char *dir) {
       return false;
     }
 
-    j = n->last_dir;
+    j = n->last_dir;  // 目标文件夹时 n 的上一级目录
   }
 
+  // 如果目标文件夹已经有了同名文件，则不能拷贝。
   if (has_file(j, file) >= 0) {
     fprintf(stderr, "目录中已有该文件\n");
     return false;
   }
 
-  // 把 i 拷贝到 j 中。
+  // 把文件 i 拷贝到文件夹 j 中。
   inode *f = GetInode(i);
   int index = NewFile(f->type, f->file_name, GetCurrentUser()->user_name);
   if (index <= 0) {
@@ -460,6 +540,7 @@ bool Copy(const char *file, const char *dir) {
   inode *n = GetInode(index);
   open_file.insert(n->id);
 
+  // 如果 f 被拷贝文件LINK，不需要则不需要把源文件也拷贝
   if (f->type == LINK_TYPE) {
     n->link_inode = f->link_inode;
     inode *nn = GetInode(n->link_inode);
@@ -467,6 +548,7 @@ bool Copy(const char *file, const char *dir) {
     n->link_cnt = nn->link_cnt;
     PutInode(nn->id, true);
   } else {
+    // 把文件内容拷贝了。
     char *buf = (char *)alloca(f->length);
     Read(f->id, 0, f->length, buf);
     Write(n->id, 0, f->length, buf);
@@ -480,6 +562,7 @@ bool Copy(const char *file, const char *dir) {
   return true;
 }
 
+// 移动
 bool Move(const char *file, const char *dir) {
   int pos = -1;
   int i = has_file(current_dir_index, file, &pos);
@@ -493,6 +576,7 @@ bool Move(const char *file, const char *dir) {
     return false;
   }
 
+  // 这部分和copy说一样的逻辑，寻找目标文件夹。
   int j = has_file(current_dir_index, dir);
   if (j < 0) {
     if (strcmp(dir, "..") != 0) {
@@ -514,7 +598,8 @@ bool Move(const char *file, const char *dir) {
     return false;
   }
 
-  // 把 i 移动到 j 中。
+  // 把文件 i 移动到文件夹 j 中。
+  // 移动，只需要在原来的文件夹中删除index，在新文件夹中增加index即可。
   dirEntry entry;
   entry.file_id = -1;
   WriteEntry(current_dir_index, pos, sizeof(dirEntry), (const char *)&entry);

@@ -4,6 +4,7 @@
 int main() {
   FormatFileSystem(root_path);
   LogIn("root", "root");
+  need_log = false;
   CreateFile("a");
   constexpr char buf[] = "abcdefghijklmnopqrstuvwxyz";
   int len = 0;

@@ -108,9 +108,10 @@ extern userEntry user_info;      // 当前用户信息 定义在user.cpp
 extern int fd;                   // 文件描述符，用于访问磁盘文件 定义在disk.cpp
 extern char *memory;             // 多进程共享内存 定义在disk.cpp
 extern const char *TYPE2NAME[];  // 文件类型名称数组 定义在directory.cpp
-extern bool need_log;
+extern bool need_log;            // 是否需要打印日志，定义在disk.cpp中
 /* -------------------全局变量--------------------- */
 
+// 一个简单的宏，用来打印日志。
 #define LOG(fmt, ...)                    \
   if (need_log) {                        \
     fprintf(stderr, fmt, ##__VA_ARGS__); \

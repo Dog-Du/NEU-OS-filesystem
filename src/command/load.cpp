@@ -8,6 +8,7 @@
 #include "head.h"
 
 bool Load(const char *src, const char *file) {
+  // 检查
   int fd = open(src, O_RDONLY);
   if (fd < 0) {
     fprintf(stderr, "不存在文件%s\n", src);
@@ -34,6 +35,7 @@ bool Load(const char *src, const char *file) {
     return false;
   }
 
+  // 先拷贝到buf，再append到文件
   struct stat s;
   fstat(fd, &s);
   int len = s.st_size;

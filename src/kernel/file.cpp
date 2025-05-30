@@ -4,6 +4,7 @@
 // 我觉得这个函数写的挺好，屏蔽了文件的多级索引，直接抽象成了一个块数组，通过下标来访问对应块
 // 要考虑到，写入的时候可能会有空心，也就是后面的块分配了，但是中间的块却没有分配
 // 不过只需要保证，分配来的块是clear的全零即可，因此需要在AllocaDataBlock中清空。
+// 实现了文件是block块的抽象。
 ///@param n 传入文件的inode
 ///@param i 文件分为若干块，这里i是第i块的意思
 ///@param index 部分地方调用可能需要知道块在整个磁盘的位置
@@ -33,7 +34,7 @@ static dataBlock *getBlock(inode *n, int i, int *index) {
       PutBlock(n->second_index, true);
     }
 
-    LOG( "访问二级索引块%d\n", n->second_index);
+    LOG("访问二级索引块%d\n", n->second_index);
     indexBlock *block = GetIndexBlock(n->second_index);
     i -= MAX_FIRST_INDEX;
     block->data_block[i] = (block->data_block[i] <= 0 ? AllocDataBlock() : block->data_block[i]);
@@ -44,6 +45,13 @@ static dataBlock *getBlock(inode *n, int i, int *index) {
 }
 
 int NewFile(file_type type, const char *file_name, const char *owner_name) {
+  const int file_name_len = strlen(file_name);
+  const int owner_name_len = strlen(owner_name);
+  if (file_name_len >= MAX_NAME_LENGTH || owner_name_len >= MAX_NAME_LENGTH) {
+    fprintf(stderr, "文件名或所有者名过长\n");
+    return -1;
+  }
+
   int index = AllocDataBlock();
   if (index <= 0) {
     return index;
@@ -60,15 +68,6 @@ int NewFile(file_type type, const char *file_name, const char *owner_name) {
   // 因为inode节点和block节点共用编号，所以这个编号分配给inode之后，会让其对应的block节点浪费，为了减少浪费，把它分配给第一块
   // 不过对于链接来说，没啥用。
 
-  int file_name_len = strlen(file_name);
-  int owner_name_len = strlen(owner_name);
-
-  if (file_name_len >= MAX_NAME_LENGTH || owner_name_len >= MAX_NAME_LENGTH) {
-    fprintf(stderr, "文件名或所有者名过长\n");
-    file_name_len = std::min(file_name_len, MAX_NAME_LENGTH - 1);
-    owner_name_len = std::min(owner_name_len, MAX_NAME_LENGTH - 1);
-  }
-
   memcpy(n->file_name, file_name, file_name_len);
   memcpy(n->owner_name, owner_name, owner_name_len);
 
@@ -77,6 +76,7 @@ int NewFile(file_type type, const char *file_name, const char *owner_name) {
 }
 
 // 在写入的时候，指定位置写入，可能会导致文件中间是空的。读取的时候要小心
+// 实现了文件是字节数组的抽象。
 int Write(int index, int pos, int len, const char *buf) {
   if (GetSuperBlock()->user_info_id != index && ValidateCurrent(index) == false) {
     fprintf(stderr, "无权限\n");
@@ -97,10 +97,10 @@ int Write(int index, int pos, int len, const char *buf) {
     n = GetInode(n->link_inode);
   }
 
-  int start_i = pos / BLOCK_SIZE;
-  int end_i = (pos + len) / BLOCK_SIZE;
-  int start_pos = pos % BLOCK_SIZE;
-  int w_size = 0;
+  int start_i = pos / BLOCK_SIZE;        // 起始块的编号
+  int end_i = (pos + len) / BLOCK_SIZE;  // 结束块的编号
+  int start_pos = pos % BLOCK_SIZE;      // 偏移量
+  int w_size = 0;                        // 实际写入的字节数
 
   if (pos + len > MAX_FILE_SIZE) {
     fprintf(stderr, "文件过大，将被截断\n");
@@ -156,6 +156,7 @@ int Append(int index, int len, const char *buf) {
   return Write(n->id, n->length, len, buf);
 }
 
+// 实现了文件是字节数组的抽象。
 int Read(int index, int pos, int len, char *buf) {
   if (index <= 0) {
     return 0;
@@ -183,7 +184,7 @@ int Read(int index, int pos, int len, char *buf) {
 
   for (int i = start_i; i <= end_i && len > 0; ++i) {
     int b = -1;
-    dataBlock *block = getBlock(n, i, &b);
+    dataBlock *block = getBlock(n, i, &b);  // 可能会分配新的块
 
     if (block == nullptr || b <= 0 || b >= MAX_BLOCK_NUMBER) {
       break;
@@ -192,7 +193,7 @@ int Read(int index, int pos, int len, char *buf) {
     int s = std::min(BLOCK_SIZE, len);
     memcpy(buf + r_size, block->content + start_pos, s);
 
-    LOG( "读取块%d\n", b);
+    LOG("读取块%d\n", b);
     PutBlock(b, true);
     start_pos += s;
     start_pos %= BLOCK_SIZE;
@@ -208,6 +209,7 @@ int Read(int index, int pos, int len, char *buf) {
   return r_size;
 }
 
+// 通过字节数组的抽象，这里实现了文件是一个一个entry的抽象
 int ReadEntry(int index, int p, int size, char *buf) {
   int pos = p * size;
   int len = size;
@@ -220,6 +222,7 @@ int WriteEntry(int index, int p, int size, const char *buf) {
   return Write(index, pos, len, buf);
 }
 
+// 删除一个文件，释放block块。
 bool RemoveFile(int index) {
   inode *n = GetInode(index);
 

@@ -5,6 +5,9 @@
 #include "head.h"
 #include "print.h"
 
+// 树形用户管理。
+// 上可以读写下。下只可以读上。
+// 通过在用户信息中添加一个parent字段来实现。
 userEntry user_info;
 
 static bool get_parent(const char *worker, char *buf) {
@@ -24,6 +27,7 @@ static bool get_parent(const char *worker, char *buf) {
   return false;
 }
 
+// 检查用户名和密码是否匹配
 static bool check(const char *name, const char *passwd) {
   inode *n = GetInode(GetSuperBlock()->user_info_id);
   int len = n->length / sizeof(userEntry);
@@ -46,6 +50,7 @@ static bool check(const char *name, const char *passwd) {
   return false;
 }
 
+// 检查一个用户是否存在，并返回下标
 static int exist(const char *name) {
   inode *n = GetInode(GetSuperBlock()->user_info_id);
   int len = n->length / sizeof(userEntry);
@@ -63,6 +68,7 @@ static int exist(const char *name) {
   return -1;
 }
 
+// 把一个用户的所有孩子的父亲，修改为给定的父亲
 static void change_parent(const char *name, const char *parent) {
   inode *n = GetInode(GetSuperBlock()->user_info_id);
   int len = n->length / sizeof(userEntry);
@@ -107,13 +113,17 @@ bool LogIn(const char *name, const char *passwd) {
 
 const userEntry *GetCurrentUser() { return &user_info; }
 
+// 检查worker是否有权限操作owner的文件
 bool Validate(const char *owner, const char *worker) {
+  // 特殊处理初始化阶段。
   if (strlen(worker) == 0 || strlen(owner) == 0) {
     return true;
   }
 
   char owner_buf[MAX_NAME_LENGTH];
 
+  // root的父亲是root，所以可以打断loop
+  // 如果owner的祖先中，不存在worker，说明worker无权限访问owner的文件。
   while (strcmp(owner, worker) != 0 && strcmp(owner, "root") != 0) {
     char buf[MAX_NAME_LENGTH];
     memset(buf, 0, MAX_NAME_LENGTH);
@@ -125,6 +135,7 @@ bool Validate(const char *owner, const char *worker) {
   return strcmp(owner, worker) == 0;
 }
 
+// 新增用户就是在user_info中添加一个userEntry。
 bool UserAdd(const char *name, const char *passwd, const char *parent) {
   if (exist(name) >= 0) {
     fprintf(stderr, "该用户已存在.\n");
@@ -137,10 +148,8 @@ bool UserAdd(const char *name, const char *passwd, const char *parent) {
 
   if (name_len >= MAX_NAME_LENGTH || passwd_len >= MAX_NAME_LENGTH ||
       parent_len >= MAX_NAME_LENGTH) {
-    fprintf(stderr, "用户名、密码或父用户名称过长，将被截断\n");
-    name_len = std::min(name_len, MAX_NAME_LENGTH - 1);
-    passwd_len = std::min(passwd_len, MAX_NAME_LENGTH - 1);
-    parent_len = std::min(parent_len, MAX_NAME_LENGTH - 1);
+    fprintf(stderr, "用户名、密码或父用户名称过长\n");
+    return false;
   }
 
   userEntry entry;
@@ -148,10 +157,13 @@ bool UserAdd(const char *name, const char *passwd, const char *parent) {
   memcpy(entry.user_name, name, name_len);
   memcpy(entry.user_passwd, passwd, passwd_len);
   memcpy(entry.parent, parent, parent_len);
+  // 把信息append到user_info_id中
   Append(GetSuperBlock()->user_info_id, sizeof(entry), (const char *)&entry);
   return true;
 }
 
+// 删除用户就是把user_info中对应的userEntry清空，并把它的孩子的父亲改为它的父亲。
+// 但是需要判断是否允许删除。
 bool UserDel(const char *name) {
   int index = exist(name);
 
@@ -177,6 +189,7 @@ bool UserDel(const char *name) {
   change_parent(name, del_user.parent);
   userEntry entry;
   memset(&entry, 0, sizeof(entry));
+  // 覆盖对应位置。
   WriteEntry(GetSuperBlock()->user_info_id, index, sizeof(entry), (const char *)&entry);
   return true;
 }

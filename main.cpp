@@ -164,7 +164,13 @@ int main() {
       cin >> param;
       string temp;
       cin >> temp;
-      Append(Open(param.c_str()), temp.size(), temp.c_str());
+      int fd = Open(param.c_str());
+
+      if (GetInode(fd)->type == DIR_TYPE) {
+        fprintf(stderr, "文件不是文件类型。\n");
+      } else {
+        Append(Open(param.c_str()), temp.size(), temp.c_str());
+      }
     } else if (command == "write") {
       int x;
       string temp, num;
@@ -179,7 +185,7 @@ int main() {
 
         int fd = Open(param.c_str());
 
-        if (fd <= 0 || GetInode(fd)->type != FILE_TYPE) {
+        if (fd <= 0 || GetInode(fd)->type == DIR_TYPE) {
           fprintf(stderr, "文件未打开或不是文件类型。\n");
           throw invalid_argument("Invalid file type.");
         }

@@ -12,6 +12,7 @@ char buf[MAX_FILE_SIZE];
 int main() {
   FormatFileSystem(root_path);
   LogIn("root", "root");
+  need_log = false;
 
   for (int i = 0; i < MAX_BLOCK_NUMBER; ++i) {
     std::string s = std::to_string(i);

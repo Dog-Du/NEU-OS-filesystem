@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <string>
 #include <cassert>
+#include <string>
 #include "head.h"
 
 char buf[MAX_FILE_SIZE];
@@ -23,8 +23,9 @@ int main() {
 
   FormatFileSystem(root_path);
   LogIn("root", "root");
+  need_log = false;
 
-  for (int i = 0; i <= 10; ++i) {
+  for (int i = 0; i <= 100; ++i) {
     std::string s = std::to_string(i);
     create_maxfile(s.c_str());
     printf("文件%d完成\n", i);
