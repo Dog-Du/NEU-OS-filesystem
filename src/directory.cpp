@@ -191,10 +191,11 @@ bool DeleteFile(const char *file_name) {
     RemoveFile(nn != nullptr ? nn->id : n->id);
     fprintf(stdout, "删除文件%s\n", file_name);
   } else {
-    fprintf(stdout, "删除链接%s\n", file_name);
+    fprintf(stdout, "删除链接%s %d\n", file_name, n->id);
   }
 
   if (nn != nullptr) {
+    RemoveFile(n->id);
     PutInode(nn->id, true);
   }
 
