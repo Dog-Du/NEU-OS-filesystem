@@ -1,5 +1,5 @@
 # 东北大学操作系统课设-文件系统
-## 工具链
+## 开发工具
 * `Linux Ubuntu`环境
 * `vscode`开发
 * `CMake`构建
@@ -8,6 +8,37 @@
 * `Git`版本管理
 * `clang`前端提示
 * `clang-format`统一代码风格
+
+## 编译与运行
+将代码项目`clone`到本地
+```
+git clone https://github.com/Dog-Du/NEU-OS-filesystem.git
+```
+进入项目文件夹
+```
+cd NEU-OS-filesystem
+```
+创建`build`目录
+```
+mkdir build && cd build
+```
+`cmake`构建项目
+```
+cmake .. -G"Unix Makefiles"
+```
+或者
+```
+cmake .. -G"Ninja"
+```
+编译
+```
+make
+```
+运行
+```
+./FileSystem
+```
+
 
 ## 支持功能：
 1. `Load` 导入本地文件
