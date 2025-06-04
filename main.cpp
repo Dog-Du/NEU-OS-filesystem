@@ -65,6 +65,7 @@ void CurrentDirector()  // 显示当前目录
   printf("%s", GetPath().c_str());
   PRINT_FONT_BLA;
   printf(">");
+  PRINT_FONT_BLA;
 }
 
 int main() {

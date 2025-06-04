@@ -7,13 +7,14 @@ set(CMAKE_BUILD_TYPE Debug)
 
 include_directories(include)
 add_library(filesystem
-  src/kernel/directory.cpp
-  src/kernel/disk.cpp
-  src/kernel/file.cpp
-  src/kernel/user.cpp
+  src/directory.cpp
+  src/disk.cpp
+  src/file.cpp
+  src/user.cpp
 
-  src/command/read.cpp
-  src/command/load.cpp)
+  # src/command/read.cpp
+  # src/command/load.cpp
+  )
 
 link_libraries(filesystem)
 add_executable(FileSystem main.cpp)

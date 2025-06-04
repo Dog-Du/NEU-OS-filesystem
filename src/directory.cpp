@@ -1,6 +1,10 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <cassert>
 #include <list>
 #include <set>
 #include <string>
@@ -606,4 +610,79 @@ bool Move(const char *file, const char *dir) {
   entry.file_id = i;
   Append(j, sizeof(entry), (const char *)&entry);
   return true;
+}
+
+bool Load(const char *src, const char *file) {
+  // 检查
+  int fd = open(src, O_RDONLY);
+  if (fd < 0) {
+    fprintf(stderr, "不存在文件%s\n", src);
+    close(fd);
+    return false;
+  }
+
+  int index = Open(file);
+  if (index < 0 || GetInode(index)->type != FILE_TYPE) {
+    fprintf(stderr, "不存在文件%s\n", file);
+    close(fd);
+    return false;
+  }
+
+  if (ValidateCurrent(index) == false) {
+    fprintf(stderr, "无权限\n");
+    close(fd);
+    return false;
+  }
+
+  if (IsOpen(index) == false) {
+    fprintf(stderr, "未打开\n");
+    close(fd);
+    return false;
+  }
+
+  // 先拷贝到buf，再append到文件
+  struct stat s;
+  fstat(fd, &s);
+  int len = s.st_size;
+  char *buf = (char *)alloca(len + 1);
+  memset(buf, 0, len + 1);
+  read(fd, buf, len);
+
+  Append(index, len, buf);
+  close(fd);
+  return true;
+}
+
+void ReadFile(const char *file) {
+  int fd = Open(file);
+  if (fd < 0) {
+    fprintf(stderr, "读取出错\n");
+    return;
+  }
+
+  if (IsOpen(fd) == false) {
+    fprintf(stderr, "未打开\n");
+    return;
+  }
+
+  inode *n = GetInode(fd);
+  if (n->type == LINK_TYPE) {
+    n = GetInode(n->link_inode);
+  }
+
+  char *s = (char *)alloca(n->length + 1);
+  memset(s, 0, n->length + 1);
+
+  // 读取
+  int len = Read(fd, 0, n->length, s);
+  s[len] = '\0';
+
+  // 按字节打印，避免因为'\0'出现问题。
+  PRINT_FONT_GRE
+  for (int i = 0; i < len; ++i) {
+    putc(s[i], stdout);
+  }
+  PRINT_FONT_RED
+  fprintf(stdout, "\n共读取%d字节\n", len);
+  PRINT_FONT_BLA;
 }
