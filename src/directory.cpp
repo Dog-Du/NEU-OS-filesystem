@@ -506,7 +506,7 @@ bool Rename(const char *old_name, const char *new_name) {
 bool Copy(const char *file, const char *dir) {
   int pos = -1;
   int i = has_file(current_dir_index, file, &pos);
-  if (i < 0 || GetInode(i)->type != FILE_TYPE) {
+  if (i < 0 || GetInode(i)->type == DIR_TYPE) {
     fprintf(stderr, "不存在该文件\n");
     return false;
   }
@@ -571,7 +571,7 @@ bool Copy(const char *file, const char *dir) {
 bool Move(const char *file, const char *dir) {
   int pos = -1;
   int i = has_file(current_dir_index, file, &pos);
-  if (i < 0 || GetInode(i)->type != FILE_TYPE) {
+  if (i < 0 || GetInode(i)->type == DIR_TYPE) {
     fprintf(stderr, "不存在该文件\n");
     return false;
   }
